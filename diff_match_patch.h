@@ -18,6 +18,22 @@
  *
  * Diff Match and Patch
  * http://code.google.com/p/google-diff-match-patch/
+ * 
+ */
+
+/**
+ *  diff_match_patch.h
+ *
+ *  
+ *  Due to wrongful encoding, The lib now only supports char_t and char32_t types, 
+ *  The lib didn't support patching strings containing non-ASCII chars properly. Because utf-8 
+ *  and utf-16 can exist of a variable length for an unicode char. The lib could break 
+ *  a unicode char in partials, resulting in a corrupt patch, with char32_t this problem 
+ *  is solved, because it's using a fixed length, containing the whole unicode char.
+ *
+ * 
+ *  @author Hamza ait Messaoud <hamza.aitmessaoud@copernica.com>
+ *  @copyright 2008 - 2018 Copernica BV
  */
 
 #ifndef DIFF_MATCH_PATCH_H
@@ -31,6 +47,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <cwchar>
+#include <cwctype>
 #include <time.h>
 
 /*
@@ -52,20 +69,25 @@
  #include <string>
  using namespace std;
  int main(int argc, char **argv) {
-   diff_match_patch<wstring> dmp;
-   wstring str1 = L"First string in diff";
-   wstring str2 = L"Second string in diff";
+   diff_match_patch<u32string> dmp;
+   u32string str1 = U"First string in diff";
+   u32string str2 = U"Second string in diff";
 
-   wstring strPatch = dmp.patch_toText(dmp.patch_make(str1, str2));
-   pair<wstring, vector<bool> > out
+   u32string strPatch = dmp.patch_toText(dmp.patch_make(str1, str2));
+   pair<u32string, vector<bool> > out
        = dmp.patch_apply(dmp.patch_fromText(strPatch), str1);
-   wstring strResult = out.first;
+   u32string strResult = out.first;
 
    // here, strResult will equal str2 above.
    return 0;
  }
 
  */
+
+/**
+ *  Set up namespace
+ */
+namespace Copernica { namespace SimHash {
 
 // Character type dependencies
 template <class char_t> struct diff_match_patch_traits {};
@@ -120,8 +142,8 @@ class diff_match_patch {
       string_t prettyText = text;
       // Replace linebreaks with Pilcrow signs.
       for (typename string_t::iterator i = prettyText.begin(); i != prettyText.end(); ++i)
-        if (traits::to_wchar(*i) == L'\n') *i = traits::from_wchar(L'\u00b6');
-      return traits::cs(L"Diff(") + strOperation(operation) + traits::cs(L",\"") + prettyText + traits::cs(L"\")");
+        if (traits::to_char32(*i) == U'\n') *i = traits::from_char32(U'\u00b6');
+      return traits::cs(U"Diff(") + strOperation(operation) + traits::cs(U",\"") + prettyText + traits::cs(U"\")");
     }
 
     /**
@@ -137,13 +159,13 @@ class diff_match_patch {
     static string_t strOperation(Operation op) {
       switch (op) {
         case INSERT:
-          return traits::cs(L"INSERT");
+          return traits::cs(U"INSERT");
         case DELETE:
-          return traits::cs(L"DELETE");
+          return traits::cs(U"DELETE");
         case EQUAL:
-          return traits::cs(L"EQUAL");
+          return traits::cs(U"EQUAL");
       }
-      throw string_t(traits::cs(L"Invalid operation."));
+      throw string_t(traits::cs(U"Invalid operation."));
     }
   };
 
@@ -171,43 +193,43 @@ class diff_match_patch {
     }
 
     /**
-     * Emulate GNU diff's format.
+     * Emmulate GNU diff's format.
      * Header: @@ -382,8 +481,9 @@
-     * Indices are printed as 1-based, not 0-based.
+     * Indicies are printed as 1-based, not 0-based.
      * @return The GNU diff string
      */
     string_t toString() const {
       string_t coords1, coords2;
       if (length1 == 0) {
-        coords1 = to_string(start1) + traits::cs(L",0");
+        coords1 = to_string(start1) + traits::cs(U",0");
       } else if (length1 == 1) {
         coords1 = to_string(start1 + 1);
       } else {
-        coords1 = to_string(start1 + 1) + traits::from_wchar(L',') + to_string(length1);
+        coords1 = to_string(start1 + 1) + traits::from_char32(U',') + to_string(length1);
       }
       if (length2 == 0) {
-        coords2 = to_string(start2) + traits::cs(L",0");
+        coords2 = to_string(start2) + traits::cs(U",0");
       } else if (length2 == 1) {
         coords2 = to_string(start2 + 1);
       } else {
-        coords2 = to_string(start2 + 1) + traits::from_wchar(L',') + to_string(length2);
+        coords2 = to_string(start2 + 1) + traits::from_char32(U',') + to_string(length2);
       }
-      string_t text(traits::cs(L"@@ -") + coords1 + traits::cs(L" +") + coords2 + traits::cs(L" @@\n"));
+      string_t text(traits::cs(U"@@ -") + coords1 + traits::cs(U" +") + coords2 + traits::cs(U" @@\n"));
       // Escape the body of the patch with %xx notation.
       for (typename Diffs::const_iterator cur_diff = diffs.begin(); cur_diff != diffs.end(); ++cur_diff) {
         switch ((*cur_diff).operation) {
           case INSERT:
-            text += traits::from_wchar(L'+');
+            text += traits::from_char32(U'+');
             break;
           case DELETE:
-            text += traits::from_wchar(L'-');
+            text += traits::from_char32(U'-');
             break;
           case EQUAL:
-            text += traits::from_wchar(L' ');
+            text += traits::from_char32(U' ');
             break;
         }
         append_percent_encoded(text, (*cur_diff).text);
-        text += traits::from_wchar(L'\n');
+        text += traits::from_char32(U'\n');
       }
 
       return text;
@@ -664,7 +686,7 @@ class diff_match_patch {
     // Modifying text would create many large strings to garbage collect.
     typename string_t::size_type lineLen;
     for (typename string_t::const_pointer lineStart = text.c_str(), textEnd = lineStart + text.size(); lineStart < textEnd; lineStart += lineLen + 1) {
-      lineLen = next_token(text, traits::from_wchar(L'\n'), lineStart);
+      lineLen = next_token(text, traits::from_char32(U'\n'), lineStart);
       if (lineStart + lineLen == textEnd) --lineLen;
       chars += (char_t)(*lineHash.insert(std::make_pair(LinePtr(lineStart, lineLen + 1), lineHash.size() + 1)).first).second;
     }
@@ -769,7 +791,7 @@ class diff_match_patch {
         return best;
       }
       length += found;
-      if (found == 0 || right(text1_trunc, length) == text2_trunc.substr(0, length)) {
+      if (found == 0 || right(text1_trunc, length) == right(text2_trunc, length)) {
         best = length;
         length++;
       }
@@ -1095,21 +1117,21 @@ class diff_match_patch {
     bool blankLine1 = false;
     if (lineBreak1) {
       typename string_t::const_reverse_iterator p1 = one.rbegin(), p2 = one.rend();
-      if (traits::to_wchar(*p1) == L'\n' && ++p1 != p2) {
-        if (traits::to_wchar(*p1) == L'\r')
+      if (traits::to_char32(*p1) == U'\n' && ++p1 != p2) {
+        if (traits::to_char32(*p1) == U'\r')
           ++p1;
-        blankLine1 = p1 != p2 && traits::to_wchar(*p1) == L'\n';
+        blankLine1 = p1 != p2 && traits::to_char32(*p1) == U'\n';
       }
     }
     bool blankLine2 = false;
     if (lineBreak2) {
       typename string_t::const_iterator p1 = two.end(), p2 = two.begin();
-      if (traits::to_wchar(*p2) == L'\r')
+      if (traits::to_char32(*p2) == U'\r')
         ++p2;
-      if (p2 != p1 && traits::to_wchar(*p2) == L'\n') {
-        if (++p2 != p1 && traits::to_wchar(*p2) == L'\r')
+      if (p2 != p1 && traits::to_char32(*p2) == U'\n') {
+        if (++p2 != p1 && traits::to_char32(*p2) == U'\r')
           ++p2;
-        if (p2 != p1 && traits::to_wchar(*p2) == L'\n')
+        if (p2 != p1 && traits::to_char32(*p2) == U'\n')
           blankLine2 = true;
       }
     }
@@ -1261,13 +1283,13 @@ class diff_match_patch {
             std::advance(prev_diff, -(count_delete + count_insert));
             diffs.erase(prev_diff, cur_diff);
             if (count_delete != 0 && count_insert != 0) {
-              // Factor out any common prefixes.
+              // Factor out any common prefixies.
               commonlength = diff_commonPrefix(text_insert, text_delete);
               if (commonlength != 0) {
                 if (cur_diff != diffs.begin()) {
                   prev_diff = cur_diff;
                   if ((*--prev_diff).operation != EQUAL) {
-                    throw string_t(traits::cs(L"Previous diff should have been an equality."));
+                    throw string_t(traits::cs(U"Previous diff should have been an equality."));
                   }
                   (*prev_diff).text += text_insert.substr(0, commonlength);
                 } else {
@@ -1276,7 +1298,7 @@ class diff_match_patch {
                 text_insert = safeMid(text_insert, commonlength);
                 text_delete = safeMid(text_delete, commonlength);
               }
-              // Factor out any common suffixes.
+              // Factor out any common suffixies.
               commonlength = diff_commonSuffix(text_insert, text_delete);
               if (commonlength != 0) {
                 (*cur_diff).text = safeMid(text_insert, text_insert.length()
@@ -1410,11 +1432,11 @@ class diff_match_patch {
       typename string_t::size_type n = (*cur_diff).text.size();
       typename string_t::const_pointer p, end;
       for (p = (*cur_diff).text.c_str(), end = p + n; p != end; ++p)
-        switch (traits::to_wchar(*p)) {
-          case L'&': n += 4; break;
-          case L'<':
-          case L'>': n += 3; break;
-          case L'\n': n += 9; break;
+        switch (traits::to_char32(*p)) {
+          case U'&': n += 4; break;
+          case U'<':
+          case U'>': n += 3; break;
+          case U'\n': n += 9; break;
         }
       if (n == (*cur_diff).text.size())
         text = (*cur_diff).text;
@@ -1422,23 +1444,23 @@ class diff_match_patch {
         text.clear();
         text.reserve(n);
         for (p = (*cur_diff).text.c_str(); p != end; ++p)
-          switch (traits::to_wchar(*p)) {
-            case L'&': text += traits::cs(L"&amp;"); break;
-            case L'<': text += traits::cs(L"&lt;"); break;
-            case L'>': text += traits::cs(L"&gt;"); break;
-            case L'\n': text += traits::cs(L"&para;<br>"); break;
+          switch (traits::to_char32(*p)) {
+            case U'&': text += traits::cs(U"&amp;"); break;
+            case U'<': text += traits::cs(U"&lt;"); break;
+            case U'>': text += traits::cs(U"&gt;"); break;
+            case U'\n': text += traits::cs(U"&para;<br>"); break;
             default: text += *p;
           }
       }
       switch ((*cur_diff).operation) {
         case INSERT:
-          html += traits::cs(L"<ins style=\"background:#e6ffe6;\">") + text + traits::cs(L"</ins>");
+          html += traits::cs(U"<ins style=\"background:#e6ffe6;\">") + text + traits::cs(U"</ins>");
           break;
         case DELETE:
-          html += traits::cs(L"<del style=\"background:#ffe6e6;\">") + text + traits::cs(L"</del>");
+          html += traits::cs(U"<del style=\"background:#ffe6e6;\">") + text + traits::cs(U"</del>");
           break;
         case EQUAL:
-          html += traits::cs(L"<span>") + text + traits::cs(L"</span>");
+          html += traits::cs(U"<span>") + text + traits::cs(U"</span>");
           break;
       }
     }
@@ -1522,16 +1544,16 @@ class diff_match_patch {
     for (typename Diffs::const_iterator cur_diff = diffs.begin(); cur_diff != diffs.end(); ++cur_diff) {
       switch ((*cur_diff).operation) {
         case INSERT: {
-          text += traits::from_wchar(L'+');
+          text += traits::from_char32(U'+');
           append_percent_encoded(text, (*cur_diff).text);
-          text += traits::from_wchar(L'\t');
+          text += traits::from_char32(U'\t');
           break;
         }
         case DELETE:
-          text += traits::from_wchar(L'-') + to_string((*cur_diff).text.length()) + traits::from_wchar(L'\t');
+          text += traits::from_char32(U'-') + to_string((*cur_diff).text.length()) + traits::from_char32(U'\t');
           break;
         case EQUAL:
-          text += traits::from_wchar(L'=') + to_string((*cur_diff).text.length()) + traits::from_wchar(L'\t');
+          text += traits::from_char32(U'=') + to_string((*cur_diff).text.length()) + traits::from_char32(U'\t');
           break;
       }
     }
@@ -1556,7 +1578,7 @@ class diff_match_patch {
     int pointer = 0;  // Cursor in text1
     typename string_t::size_type token_len;
     for (typename string_t::const_pointer token = delta.c_str(); token - delta.c_str() < (int)delta.length(); token += token_len + 1) {
-      token_len = next_token(delta, traits::from_wchar(L'\t'), token);
+      token_len = next_token(delta, traits::from_char32(U'\t'), token);
       if (token_len == 0) {
         // Blank tokens are ok (from a trailing \t).
         continue;
@@ -1564,23 +1586,23 @@ class diff_match_patch {
       // Each token begins with a one character parameter which specifies the
       // operation of this token (delete, insert, equality).
       string_t param(token + 1, token_len - 1);
-      switch (traits::to_wchar(*token)) {
-        case L'+':
+      switch (traits::to_char32(*token)) {
+        case U'+':
           percent_decode(param);
           diffs.push_back(Diff(INSERT, param));
           break;
-        case L'-':
+        case U'-':
           // Fall through.
-        case L'=': {
+        case U'=': {
           int n;
           n = to_int(param);
           if (n < 0) {
-            throw string_t(traits::cs(L"Negative number in diff_fromDelta: ") + param);
+            throw string_t(traits::cs(U"Negative number in diff_fromDelta: ") + param);
           }
           string_t text;
           text = safeMid(text1, pointer, n);
           pointer += n;
-          if (traits::to_wchar(*token) == L'=') {
+          if (traits::to_char32(*token) == U'=') {
             diffs.push_back(Diff(EQUAL, text));
           } else {
             diffs.push_back(Diff(DELETE, text));
@@ -1588,13 +1610,13 @@ class diff_match_patch {
           break;
         }
         default:
-          throw string_t(string_t(traits::cs(L"Invalid diff operation in diff_fromDelta: ")) + *token);
+          throw string_t(string_t(traits::cs(U"Invalid diff operation in diff_fromDelta: ")) + *token);
       }
     }
     if (pointer != text1.length()) {
-      throw string_t(traits::cs(L"Delta length (") + to_string(pointer)
-                     + traits::cs(L") smaller than source text length (")
-                     + to_string(text1.length()) + traits::from_wchar(L')'));
+      throw string_t(traits::cs(U"Delta length (") + to_string(pointer)
+                     + traits::cs(U") smaller than source text length (")
+                     + to_string(text1.length()) + traits::from_char32(U')'));
     }
     return diffs;
   }
@@ -1641,7 +1663,7 @@ class diff_match_patch {
  protected:
   int match_bitap(const string_t &text, const string_t &pattern, int loc) const {
     if (!(Match_MaxBits == 0 || (int)pattern.length() <= Match_MaxBits)) {
-      throw string_t(traits::cs(L"Pattern too long for this application."));
+      throw string_t(traits::cs(U"Pattern too long for this application."));
     }
 
     // Initialise the alphabet.
@@ -1669,7 +1691,7 @@ class diff_match_patch {
 
     int bin_min, bin_mid;
     int bin_max = pattern.length() + text.length();
-    int *rd;
+    int *rd = NULL;
     int *last_rd = NULL;
     for (int d = 0; d < (int)pattern.length(); d++) {
       // Scan for the best match; each iteration allows for one more error.
@@ -1718,7 +1740,7 @@ class diff_match_patch {
             // Told you so.
             score_threshold = score;
             best_loc = j - 1;
-            if (best_loc > loc) {
+            if (((int) best_loc) > loc) {
               // When passing loc, don't exceed our current distance from loc.
               start = std::max(1, 2 * loc - (int)best_loc);
             } else {
@@ -2261,26 +2283,26 @@ class diff_match_patch {
       typename string_t::const_pointer text = textline.c_str();
       typename string_t::size_type text_len, l;
       while (text - textline.c_str() < (int)textline.length()) {
-        if ((text_len = next_token(textline, traits::from_wchar(L'\n'), text)) == 0) { ++text; continue; }
+        if ((text_len = next_token(textline, traits::from_char32(U'\n'), text)) == 0) { ++text; continue; }
 
         // A replacement for the regexp "^@@ -(\\d+),?(\\d*) \\+(\\d+),?(\\d*) @@$" exact match
         string_t start1, length1, start2, length2;
         do {
           typename string_t::const_pointer t = text;
           l = text_len;
-          if ((l -= 9) > 0 && traits::to_wchar(*t) == L'@' && traits::to_wchar(*++t) == L'@'
-               && traits::to_wchar(*++t) == L' ' && traits::to_wchar(*++t) == L'-' && traits::is_digit(*++t)) {
+          if ((l -= 9) > 0 && traits::to_char32(*t) == U'@' && traits::to_char32(*++t) == U'@'
+               && traits::to_char32(*++t) == U' ' && traits::to_char32(*++t) == U'-' && traits::is_digit(*++t)) {
             do { start1 += *t; } while (--l > 0 && traits::is_digit(*++t));
-            if (l > 0 && traits::to_wchar(*t) == L',') ++t, --l;
+            if (l > 0 && traits::to_char32(*t) == U',') ++t, --l;
             while (l > 0 && traits::is_digit(*t)) --l, length1 += *t++;
-            if (l > 0 && traits::to_wchar(*t++) == L' ' && traits::to_wchar(*t++) == L'+' && traits::is_digit(*t)) {
+            if (l > 0 && traits::to_char32(*t++) == U' ' && traits::to_char32(*t++) == U'+' && traits::is_digit(*t)) {
               do { start2 += *t; --l; } while (traits::is_digit(*++t));
-              if (l > 0 && traits::to_wchar(*t) == L',') ++t, --l;
+              if (l > 0 && traits::to_char32(*t) == U',') ++t, --l;
               while (l > 0 && traits::is_digit(*t)) --l, length2 += *t++;
-              if (l == 0 && traits::to_wchar(*t++) == L' ' && traits::to_wchar(*t++) == L'@' && traits::to_wchar(*t) == L'@') break; // Success
+              if (l == 0 && traits::to_char32(*t++) == U' ' && traits::to_char32(*t++) == U'@' && traits::to_char32(*t) == U'@') break; // Success
             }
           }
-          throw string_t(traits::cs(L"Invalid patch string: ") + string_t(text, text_len));
+          throw string_t(traits::cs(U"Invalid patch string: ") + string_t(text, text_len));
         } while (false);
 
         Patch patch;
@@ -2288,7 +2310,7 @@ class diff_match_patch {
         if (length1.empty()) {
           patch.start1--;
           patch.length1 = 1;
-        } else if (length1.size() == 1 && traits::to_wchar(length1[0]) == L'0') {
+        } else if (length1.size() == 1 && traits::to_char32(length1[0]) == U'0') {
           patch.length1 = 0;
         } else {
           patch.start1--;
@@ -2299,7 +2321,7 @@ class diff_match_patch {
         if (length2.empty()) {
           patch.start2--;
           patch.length2 = 1;
-        } else if (length2.size() == 1 && traits::to_wchar(length2[0]) == L'0') {
+        } else if (length2.size() == 1 && traits::to_char32(length2[0]) == U'0') {
           patch.length2 = 0;
         } else {
           patch.start2--;
@@ -2307,30 +2329,30 @@ class diff_match_patch {
         }
 
         for (text += text_len + 1; text - textline.c_str() < (int)textline.length(); text += text_len + 1) {
-          if ((text_len = next_token(textline, traits::from_wchar(L'\n'), text)) == 0) continue;
+          if ((text_len = next_token(textline, traits::from_char32(U'\n'), text)) == 0) continue;
 
           sign = *text;
           line.assign(text + 1, text_len - 1);
           percent_decode(line);
-          switch (traits::to_wchar(sign)) {
-            case L'-':
+          switch (traits::to_char32(sign)) {
+            case U'-':
               // Deletion.
               patch.diffs.push_back(Diff(DELETE, line));
               continue;
-            case L'+':
+            case U'+':
               // Insertion.
               patch.diffs.push_back(Diff(INSERT, line));
               continue;
-            case L' ':
+            case U' ':
               // Minor equality.
               patch.diffs.push_back(Diff(EQUAL, line));
               continue;
-            case L'@':
+            case U'@':
               // Start of next patch.
               break;
             default:
               // WTF?
-              throw string_t(traits::cs(L"Invalid patch mode '") + (sign + (traits::cs(L"' in: ") + line)));
+              throw string_t(traits::cs(U"Invalid patch mode '") + (sign + (traits::cs(U"' in: ") + line)));
           }
           break;
         }
@@ -2343,7 +2365,7 @@ class diff_match_patch {
 
   /**
    * A safer version of string_t.mid(pos).  This one returns "" instead of
-   * null when the position equals the string length.
+   * null when the postion equals the string length.
    * @param str String to take a substring from.
    * @param pos Position to start the substring from.
    * @return Substring.
@@ -2355,7 +2377,7 @@ class diff_match_patch {
 
   /**
    * A safer version of string_t.mid(pos, len).  This one returns "" instead of
-   * null when the position equals the string length.
+   * null when the postion equals the string length.
    * @param str String to take a substring from.
    * @param pos Position to start the substring from.
    * @param len Length of substring.
@@ -2378,15 +2400,15 @@ class diff_match_patch {
     int n_ = n; do { ++l; } while ((n_ /= 10) > 0);
     str.resize(l);
     typename string_t::iterator s = str.end();
-    const wchar_t digits[] = L"0123456789";
-    do { *--s = traits::from_wchar(digits[n % 10]); } while ((n /= 10) > 0);
-    if (negative) *--s = traits::from_wchar(L'-');
+    const char32_t digits[] = U"0123456789";
+    do { *--s = traits::from_char32(digits[n % 10]); } while ((n /= 10) > 0);
+    if (negative) *--s = traits::from_char32(U'-');
     return str;
   }
 
   static int to_int(const string_t& str) { return traits::to_int(str.c_str()); }
 
-  static bool is_control(char_t c) { switch (traits::to_wchar(c)) { case L'\n': case L'\r': return true; } return false; }
+  static bool is_control(char_t c) { switch (traits::to_char32(c)) { case U'\n': case U'\r': return true; } return false; }
 
   static typename string_t::size_type next_token(const string_t& str, char_t delim, typename string_t::const_pointer off) {
     typename string_t::const_pointer p = off, end = str.c_str() + str.length();
@@ -2395,11 +2417,11 @@ class diff_match_patch {
   }
 
   static void append_percent_encoded(string_t& s1, const string_t& s2) {
-    const wchar_t safe_chars[] = L"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_.~ !*'();/?:@&=+$,#";
+    const char32_t safe_chars[] = U"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-_.~ !*'();/?:@&=+$,#";
 
     size_t safe[0x100], i;
     for (i = 0; i < 0x100; ++i) safe[i] = 0;
-    for (i = 0; i < sizeof(safe_chars) / sizeof(wchar_t); ++i) safe[safe_chars[i]] = i + 1;
+    for (i = 0; i < sizeof(safe_chars) / sizeof(char32_t); ++i) safe[safe_chars[i]] = i + 1;
 
     int n = 0;
     typename traits::utf32_t u;
@@ -2437,43 +2459,43 @@ class diff_match_patch {
 
         for (const unsigned char* p = utf8; p < pt; ++p)
           if (safe[*p])
-            s1 += traits::from_wchar(safe_chars[safe[*p] - 1]);
+            s1 += traits::from_char32(safe_chars[safe[*p] - 1]);
           else {
-            s1 += traits::from_wchar(L'%');
-            s1 += traits::from_wchar(safe_chars[(*p & 0xF0) >> 4]);
-            s1 += traits::from_wchar(safe_chars[*p & 0xF]);
+            s1 += traits::from_char32(U'%');
+            s1 += traits::from_char32(safe_chars[(*p & 0xF0) >> 4]);
+            s1 += traits::from_char32(safe_chars[*p & 0xF]);
           }
       }
     }
   }
 
   static unsigned hex_digit_value(char_t c) {
-    switch (traits::to_wchar(c))
+    switch (traits::to_char32(c))
     {
-      case L'0': return 0;
-      case L'1': return 1;
-      case L'2': return 2;
-      case L'3': return 3;
-      case L'4': return 4;
-      case L'5': return 5;
-      case L'6': return 6;
-      case L'7': return 7;
-      case L'8': return 8;
-      case L'9': return 9;
-      case L'A': case L'a': return 0xA;
-      case L'B': case L'b': return 0xB;
-      case L'C': case L'c': return 0xC;
-      case L'D': case L'd': return 0xD;
-      case L'E': case L'e': return 0xE;
-      case L'F': case L'f': return 0xF;
+      case U'0': return 0;
+      case U'1': return 1;
+      case U'2': return 2;
+      case U'3': return 3;
+      case U'4': return 4;
+      case U'5': return 5;
+      case U'6': return 6;
+      case U'7': return 7;
+      case U'8': return 8;
+      case U'9': return 9;
+      case U'A': case U'a': return 0xA;
+      case U'B': case U'b': return 0xB;
+      case U'C': case U'c': return 0xC;
+      case U'D': case U'd': return 0xD;
+      case U'E': case U'e': return 0xE;
+      case U'F': case U'f': return 0xF;
     }
-    throw string_t(string_t(traits::cs(L"Invalid character: ")) + c);
+    throw string_t(string_t(traits::cs(U"Invalid character: ")) + c);
   }
 
   static void percent_decode(string_t& str) {
     typename string_t::iterator s2 = str.begin(), s3 = s2, s4 = s2;
     for (typename string_t::const_pointer s1 = str.c_str(), end = s1 + str.size(); s1 != end; ++s1, ++s2)
-      if (traits::to_wchar(*s1) != L'%')
+      if (traits::to_char32(*s1) != U'%')
         *s2 = *s1;
       else {
         char_t d1 = *++s1;
@@ -2524,7 +2546,7 @@ class diff_match_patch {
 template <class char_t, class utf32_type = unsigned>
 struct diff_match_patch_utf32_direct {
   typedef utf32_type utf32_t;
-  template <class iterator> static iterator to_utf32(iterator i, iterator /*end*/, utf32_t& u)
+  template <class iterator> static iterator to_utf32(iterator i, iterator end, utf32_t& u)
   {
     u = *i++;
     return i;
@@ -2539,10 +2561,7 @@ struct diff_match_patch_utf32_direct {
 template <class char_t, class utf32_type = unsigned>
 struct diff_match_patch_utf32_from_utf16 {
   typedef utf32_type utf32_t;
-  static const unsigned UTF16_SURROGATE_MIN = 0xD800u;
-  static const unsigned UTF16_SURROGATE_MAX = 0xDFFFu;
-  static const unsigned UTF16_HIGH_SURROGATE_MAX = 0xDBFFu;
-  static const unsigned UTF16_LOW_SURROGATE_MIN = 0xDC00u;
+  static const unsigned UTF16_SURROGATE_MIN = 0xD800u, UTF16_SURROGATE_MAX = 0xDFFFu, UTF16_HIGH_SURROGATE_MAX = 0xDBFFu, UTF16_LOW_SURROGATE_MIN = 0xDC00u;
   static const unsigned UTF16_SURROGATE_OFFSET = (UTF16_SURROGATE_MIN << 10) + UTF16_HIGH_SURROGATE_MAX - 0xFFFFu;
   template <class iterator> static iterator to_utf32(iterator i, iterator end, utf32_t& u)
   {
@@ -2563,18 +2582,52 @@ struct diff_match_patch_utf32_from_utf16 {
   }
 };
 
-// Specialization of the traits for wchar_t
+/**
+ * Convert char32_t string to long, this is a template 
+ * function you need to pass the string type
+ * throws runtime_error if str is not a valid number
+ * @param   str     The string to convert
+ * @return  long    The converted int
+ * @thows   std::runtime_error      
+ */
+template<typename CHAR_T>
+long stol(const CHAR_T * str)
+{
+    // buffer containing the result
+    long result = 0;
+
+    // char pointer of the current char
+    CHAR_T * cp = (CHAR_T *)str;
+
+    // depointerized value of the current char pointer
+    char c = static_cast<char>(*cp);
+
+    // itterate the str and convert the chars
+    for(;c != '\0'; cp++, c = static_cast<char>(*cp))
+    {
+        // check if the char is a valid digit, if not throw exception
+        if(c < '0' || c > '9') throw std::runtime_error("String contains non-numeric chars");
+
+        // convert the char and add to result
+        result = result*10 + c-'0';
+    }
+
+    // return the converted str
+    return result;
+}
+
+// Specialization of the traits for u32char_t
 #include <cwctype>
-template <> struct diff_match_patch_traits<wchar_t> : diff_match_patch_utf32_from_utf16<wchar_t> {
-  static bool is_alnum(wchar_t c) { return std::iswalnum(c)? true : false; }
-  static bool is_digit(wchar_t c) { return std::iswdigit(c)? true : false; }
-  static bool is_space(wchar_t c) { return std::iswspace(c)? true : false; }
-  static int to_int(const wchar_t* s) { return static_cast<int>(std::wcstol(s, NULL, 10)); }
-  static wchar_t from_wchar(wchar_t c) { return c; }
-  static wchar_t to_wchar(wchar_t c) { return c; }
-  static const wchar_t* cs(const wchar_t* s) { return s; }
-  static const wchar_t eol = L'\n';
-  static const wchar_t tab = L'\t';
+template <> struct diff_match_patch_traits<char32_t> : diff_match_patch_utf32_from_utf16<char32_t> {
+  static bool is_alnum(char32_t c) { return std::iswalnum(c)? true : false; }
+  static bool is_digit(char32_t c) { return std::iswdigit(c)? true : false; }
+  static bool is_space(char32_t c) { return std::iswspace(c)? true : false; }
+  static int to_int(const char32_t* s) { return static_cast<int>(stol<char32_t>(s)); }
+  static char32_t from_char32(char32_t c) { return c; }
+  static char32_t to_char32(char32_t c) { return c; }
+  static const char32_t* cs(const char32_t* s) { return s; }
+  static const char32_t eol = U'\n';
+  static const char32_t tab = U'\t';
 };
 
 // Possible specialization of the traits for char
@@ -2585,12 +2638,16 @@ template <> struct diff_match_patch_traits<char> : diff_match_patch_utf32_direct
   static bool is_digit(char c) { return std::isdigit(c)? true : false; }
   static bool is_space(char c) { return std::isspace(c)? true : false; }
   static int to_int(const char* s) { return std::atoi(s); }
-  static char from_wchar(wchar_t c) { return static_cast<char>(c); }
-  static wchar_t to_wchar(char c) { return static_cast<wchar_t>(c); }
-  static std::string cs(const wchar_t* s) { return std::string(s, s + wcslen(s)); }
+  static char from_char32(char32_t c) { return static_cast<char>(c); }
+  static char32_t to_char32(char c) { return static_cast<char32_t>(c); }
+  static std::string cs(const char32_t* s) { return std::string(s, s + std::char_traits<char32_t>::length(s)); }
   static const char eol = '\n';
   static const char tab = '\t';
 };
 
+/**
+ *  End of namespace
+ */
+}}
 
 #endif // DIFF_MATCH_PATCH_H
